@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "SIEMServer": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "workingDirectory": "F:\\SIEMServer\\SIEMServer"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
