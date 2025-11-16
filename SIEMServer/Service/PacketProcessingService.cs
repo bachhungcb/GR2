@@ -95,6 +95,17 @@ public sealed class PacketProcessingService : BackgroundService
                             // --- BƯỚC C: Xử lý lô (batch) trong bộ nhớ ---
                             foreach (var telemetryData in telemetryDataList)
                             {
+                                if (telemetryData.Alerts != null && telemetryData.Alerts.Any())
+                                {
+                                    _logger.LogWarning(
+                                        $"[ALERTS BATCH] Agent {telemetryData.AgentId} reported {telemetryData.Alerts.Count} alerts:");
+                                    foreach (var alert in telemetryData.Alerts)
+                                    {
+                                        _logger.LogWarning(
+                                            $" -> Blocked '{alert.ProcessName}' (PID: {alert.Pid}) due to rule: {alert.MatchedRule}");
+                                    }
+                                }
+                                
                                 // Tìm agent từ Dictionary (CỰC NHANH)
                                 if (!existingAgents.TryGetValue(telemetryData.AgentId, out Agent agent))
                                 {
@@ -140,6 +151,7 @@ public sealed class PacketProcessingService : BackgroundService
                                     }).ToList();
 
                                 newSnapshots.Add(snapshot);
+                                
                             }
 
                             // --- BƯỚC D: Lưu (Save) vào DB MỘT LẦN DUY NHẤT ---

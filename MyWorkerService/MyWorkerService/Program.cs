@@ -9,6 +9,7 @@ using Serilog;
 
 //Logger configure
 Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Debug()
     .WriteTo.File(
     @"C:\temp\agent_log.txt",
         rollingInterval: RollingInterval.Day,

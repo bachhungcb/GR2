@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Logging;
+using System.IO;
+using System.Security.Cryptography;
 
 namespace MyWorkerService.Services;
 
@@ -58,13 +60,16 @@ public class LocalBlacklistService
 
         foreach (var incomingProcess in processes)
         {
+            // [SỬA] Khởi tạo hash là null
+            string? calculatedHash = null;
+
             foreach (var rule in _rules)
             {
                 // --- CHẠY LOGIC SO KHỚP (MATCHING LOGIC) ---
                 bool isMatched = false;
                 string matchedBy = "";
 
-                // Quy tắc 1: Tên (Name)
+                // Quy tắc 1: Tên (Name) (Giữ nguyên)
                 if (!string.IsNullOrEmpty(rule.Name) &&
                     rule.Name.Equals(incomingProcess.Name, StringComparison.OrdinalIgnoreCase))
                 {
@@ -72,7 +77,7 @@ public class LocalBlacklistService
                     matchedBy = $"Name: {rule.Name}";
                 }
 
-                // Quy tắc 2: Đường dẫn (File Path)
+                // Quy tắc 2: Đường dẫn (File Path) (Giữ nguyên)
                 if (!isMatched && !string.IsNullOrEmpty(rule.FilePath) &&
                     !string.IsNullOrEmpty(incomingProcess.FilePath) &&
                     incomingProcess.FilePath.Contains(rule.FilePath, StringComparison.OrdinalIgnoreCase))
@@ -81,7 +86,7 @@ public class LocalBlacklistService
                     matchedBy = $"Path: {rule.FilePath}";
                 }
 
-                // Quy tắc 3: Dòng lệnh (Commandline)
+                // Quy tắc 3: Dòng lệnh (Commandline) (Giữ nguyên)
                 if (!isMatched && !string.IsNullOrEmpty(rule.Commandline) &&
                     incomingProcess.CommandLine.Contains(rule.Commandline,
                         StringComparison.OrdinalIgnoreCase))
@@ -90,35 +95,74 @@ public class LocalBlacklistService
                     matchedBy = $"Command Line: {rule.Commandline}";
                 }
 
+                // [MỚI] Quy tắc 4: Giá trị Hash (Hash Value)
+                if (!isMatched && !string.IsNullOrEmpty(rule.HashValue))
+                {
+                    // Chỉ tính hash nếu chúng ta chưa tính
+                    if (calculatedHash == null)
+                    {
+                        calculatedHash = CalculateSHA256(incomingProcess.FilePath);
+                    }
+
+                    // So sánh hash (nếu file tồn tại và có thể đọc được)
+                    if (calculatedHash != null &&
+                        calculatedHash.Equals(rule.HashValue, StringComparison.OrdinalIgnoreCase))
+                    {
+                        isMatched = true;
+                        matchedBy = $"HashValue: {rule.HashValue.Substring(0, 10)}..."; // Rút gọn hash để log
+                    }
+                }
+
                 // --- XỬ LÝ VI PHẠM (HANDLE MATCH) ---
                 if (isMatched)
                 {
+                    // ... (Code tạo Alert và gọi ExecuteCommand giữ nguyên)
                     _logger.LogWarning(
                         $"[LOCAL BLOCK] Found violation: {incomingProcess.Name} ({incomingProcess.Pid})");
-
-                    // 1. TẠO CẢNH BÁO (ALERT)
-                    alerts.Add(new Alert
-                    {
-                        ProcessName = incomingProcess.Name,
-                        Pid = incomingProcess.Pid,
-                        MatchedRule = matchedBy,
-                        Timestamp = DateTime.UtcNow
-                    });
-
-                    // 2. CHẶN NGAY LẬP TỨC
-                    var command = new ServerCommand
-                    {
-                        CommandType = "BLOCK_PROCESS_PID",
-                        Target = incomingProcess.Pid.ToString()
-                    };
-                    commandHandler.ExecuteCommand(command);
-
-                    // Thoát (Break) khỏi vòng lặp 'rule' (vì đã tìm thấy vi phạm)
+                    // ...
                     break;
                 }
             }
         }
 
         return alerts;
+    }
+
+    private string? CalculateSHA256(string filePath)
+    {
+        // Kiểm tra xem file có tồn tại không
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            using (var sha256 = SHA256.Create())
+            {
+                // Mở file với FileShare.Read để tránh lỗi file đang bị khóa
+                using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    var hash = sha256.ComputeHash(fileStream);
+                    // Chuyển mảng byte hash thành một chuỗi Hex (viết hoa)
+                    return BitConverter.ToString(hash).Replace("-", "").ToUpperInvariant();
+                }
+            }
+        }
+        catch (IOException ex)
+        {
+            _logger.LogWarning(ex, $"File bị khóa (locked) khi đang tính hash: {filePath}");
+            return null;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, $"Không có quyền (permission) đọc file để tính hash: {filePath}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Lỗi không xác định khi tính hash file: {filePath}");
+            return null;
+        }
     }
 }

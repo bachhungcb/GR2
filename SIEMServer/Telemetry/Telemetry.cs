@@ -20,8 +20,7 @@
 
             public string FilePath { get; set; }
             public string CommandLine { get; set; }
-
-
+            
             public override string ToString() => $"{Name} ({Pid})";
         }
 

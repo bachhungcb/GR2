@@ -35,7 +35,7 @@ namespace MyWorkerService.Services
                 IPAddress ipAddress = IPAddress.Parse("127.0.0.1");
                 IPEndPoint ipEndPoint = new IPEndPoint(ipAddress, 8888);
 
-                if (!tcpClient.Connected)
+                if (tcpClient == null ||!tcpClient.Connected)
                 {
                     await CleanUpConnection(); // Dùng hàm helper an toàn
                     tcpClient = new TcpClient();
@@ -55,7 +55,7 @@ namespace MyWorkerService.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex.Message, "[PostInformation] Unhandled Exception. Forcing reconnect.");
+                _logger.LogError(ex, "[PostInformation] Unhandled Exception. Forcing reconnect.");
                 await CleanUpConnection();
             }
         }
