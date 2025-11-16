@@ -12,6 +12,7 @@ using SIEMServer.Telemetry;
 public sealed class PacketHandlerService : IPacketHandlerService
 {
     private readonly SiemDbContext _dbContext;
+    private readonly ILogger<PacketHandlerService> _logger;
     private readonly GetHostNameService _hostNameService;
     private readonly BlacklistService _blacklistService;
 
@@ -20,9 +21,11 @@ public sealed class PacketHandlerService : IPacketHandlerService
     public PacketHandlerService(
         SiemDbContext dbContext,
         GetHostNameService hostNameService,
-        BlacklistService blacklistService)
+        BlacklistService blacklistService,
+        ILogger<PacketHandlerService> logger)
     {
         _dbContext = dbContext;
+        _logger = logger;
         _hostNameService = hostNameService;
         _blacklistService = blacklistService;
     }
@@ -36,12 +39,26 @@ public sealed class PacketHandlerService : IPacketHandlerService
             var jsonDataSegment = new ArraySegment<byte>(jsonBuffer, 0, jsonBuffer.Length);
             var telemetryData = JsonSerializer.Deserialize<Telemetry>(jsonDataSegment);
 
+            if (telemetryData.Alerts != null && telemetryData.Alerts.Any())
+            {
+                _logger.LogWarning(
+                    $"[ALERTS RECEIVED] Agent {telemetryData.AgentId} reported {telemetryData.Alerts.Count} alerts:");
+                foreach (var alert in telemetryData.Alerts)
+                {
+                    _logger.LogWarning(
+                        $" -> Blocked '{alert.ProcessName}' (PID: {alert.Pid}) due to rule: {alert.MatchedRule}");
+
+                    // TODO: Ở đây, bạn có thể lưu 'alert' vào một bảng 
+                    // CSDL mới (ví dụ: 'dbo.AlertHistory')
+                }
+            }
+
             if (telemetryData == null)
             {
                 Console.WriteLine("[ERROR] Invalid JSON Data");
                 return;
             }
-            
+
             // ----- C. IN (PRINT) RA CONSOLE -----
             //LogToConsole(telemetryData, localNames, remoteNames);
 

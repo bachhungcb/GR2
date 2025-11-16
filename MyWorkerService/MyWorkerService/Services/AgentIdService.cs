@@ -1,4 +1,5 @@
-﻿using Serilog.Extensions.Hosting;
+﻿using System;
+using Serilog.Extensions.Hosting;
 using System.IO;
 
 namespace MyWorkerService.Services;

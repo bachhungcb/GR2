@@ -21,12 +21,16 @@ public class PacketChannelService
 {
     private readonly Channel<RawPacket> _channel;
 
-
     public PacketChannelService()
     {
+        var options = new BoundedChannelOptions(1000)
+        {
+            // Khi hàng đợi đầy, yêu cầu "Producer" (TCPServer) chờ
+            FullMode = BoundedChannelFullMode.Wait
+        };
         // Tạo (Create) một hàng đợi (queue) "không giới hạn" (unbounded) 
         // (có thể giữ (hold) vô số gói tin (packets) trong bộ nhớ (memory))
-        _channel = Channel.CreateUnbounded<RawPacket>();
+        _channel = Channel.CreateBounded<RawPacket>(options);
     }
 
     /// <summary>
@@ -58,7 +62,7 @@ public class PacketChannelService
     {
         return _channel.Reader.TryRead(out packet);
     }
-    
+
     /// <summary>
     /// Được gọi (Called) bởi "Đầu bếp" (Kitchen) ️ để "Chờ" (Wait)
     /// một cách hiệu quả.

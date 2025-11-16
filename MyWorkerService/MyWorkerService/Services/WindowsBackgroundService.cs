@@ -1,3 +1,8 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using MyWorkerService.Telemetry;
 
 namespace MyWorkerService.Services;
@@ -11,21 +16,29 @@ public sealed class WindowsBackgroundService : BackgroundService
     private readonly ILogger<WindowsBackgroundService> _logger;
     private readonly AgentIdService _agentIdService;
 
+    // [MỚI] Thêm 2 dịch vụ
+    private readonly LocalBlacklistService _localBlacklistService;
+    private readonly HandleCommandService _commandHandler;
+
     // 2. Constructor
     public WindowsBackgroundService(
         GetProcessService processService,
         GetTCPConnectionsService tcpConnService,
         PostInfoService postService,
         ILogger<WindowsBackgroundService> logger,
-        AgentIdService agentIdService
-        )
+        AgentIdService agentIdService,
+        LocalBlacklistService localBlacklistService, // [MỚI]
+        HandleCommandService commandHandler) // [MỚI]
     {
         _processService = processService;
         _tcpConnectionsService = tcpConnService;
         _postService = postService;
         _logger = logger;
         _agentIdService = agentIdService;
+        _localBlacklistService = localBlacklistService; // [MỚI]
+        _commandHandler = commandHandler; // [MỚI]
     }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
@@ -34,14 +47,26 @@ public sealed class WindowsBackgroundService : BackgroundService
             {
                 // 3. Get Agent Id
                 var agentId = _agentIdService.GetAgentId();
-                
-                // 3. Create new wrapper object
-                var wrapper = new AgentTelemetry();
-                
-                // 4. Create a packet
-                var packet = wrapper.Wrap(_processService, _tcpConnectionsService, agentId);
 
-                // 5. Send packet
+                // [LOGIC MỚI]
+                // 4. Lấy TẤT CẢ tiến trình
+                var processes = _processService.GetAllProcessData();
+
+                // 5. Lọc và Chặn (Nếu có)
+                //    Hàm này sẽ tự gọi commandHandler.Kill()
+                var alerts = _localBlacklistService.FilterAndBlock(processes, _commandHandler);
+
+                // 6. Create new wrapper object
+                var wrapper = new AgentTelemetry();
+
+                // 7. Create a packet (Bao gồm cả các cảnh báo)
+                var packet = wrapper.Wrap(
+                    _processService, // (Sửa lại: bạn có thể truyền 'processes' đã lấy)
+                    _tcpConnectionsService,
+                    agentId,
+                    alerts); // [SỬA] Truyền 'alerts' vào
+
+                // 8. Send packet
                 if (packet != null)
                 {
                     await _postService.PostInformation(packet);

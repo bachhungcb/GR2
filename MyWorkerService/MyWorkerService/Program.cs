@@ -1,3 +1,7 @@
+using System;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Configuration;
 using Microsoft.Extensions.Logging.EventLog;
 using MyWorkerService.Services;
@@ -13,6 +17,7 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
+    builder.Services.AddHttpClient();
 
     //USING SERILOG
     builder.Logging.ClearProviders();
@@ -29,6 +34,8 @@ try
     builder.Services.AddSingleton<PostInfoService>();
     builder.Services.AddSingleton<AgentIdService>();
     builder.Services.AddSingleton<HandleCommandService>();
+    builder.Services.AddSingleton<LocalBlacklistService>();
+    builder.Services.AddHostedService<RuleSyncService>();
     
 
     //Background service

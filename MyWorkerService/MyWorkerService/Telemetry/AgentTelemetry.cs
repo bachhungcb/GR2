@@ -1,12 +1,10 @@
 ﻿using MyWorkerService.Services;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 using static MyWorkerService.Services.GetProcessService;
 using static MyWorkerService.Services.GetTCPConnectionsService;
+using MyWorkerService.Services;
 
 namespace MyWorkerService.Telemetry
 {
@@ -16,24 +14,27 @@ namespace MyWorkerService.Telemetry
         public Guid AgentId { get; set; } //For getting agentId
         public List<ProcessJsonElement> Processes { get; set; }
         public List<TCPJsonElement> Connections { get; set; }
+        public List<Alert> Alerts { get; set; } // [MỚI] Thêm trường cảnh báo
 
         public byte[]? Wrap(
             GetProcessService processService, 
             GetTCPConnectionsService tcpConnectionService,
-            Guid  agentId)
+            Guid agentId,
+            List<Alert> alerts) // [SỬA] Thêm tham số 'alerts'
         {
             try
             {
                 AgentId = agentId;
-                
+
                 var processes = processService.GetAllProcessData();
                 Processes = processes ?? new List<ProcessJsonElement>();
 
                 var tcpConnections = tcpConnectionService.GetAllTCPConnection();
                 Connections = tcpConnections ?? new List<TCPJsonElement>();
-                
-                return JsonSerializer.SerializeToUtf8Bytes(this);
 
+                Alerts = alerts; // [MỚI] Gán danh sách cảnh báo
+
+                return JsonSerializer.SerializeToUtf8Bytes(this);
             }
             catch (Exception ex)
             {

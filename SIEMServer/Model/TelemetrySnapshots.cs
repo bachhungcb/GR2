@@ -16,6 +16,7 @@ namespace SIEMServer.Model
         //Foreign Key
         public Guid AgentId { get; set; }
         public Agent Agent {  get; set; }
+        
 
         //Navigation for Entries
         public List<ProcessEntries> ProcessEntries { get; set; }

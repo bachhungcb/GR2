@@ -1,7 +1,10 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Management;
 using System.IO;
+using Microsoft.Extensions.Logging;
 
 namespace MyWorkerService.Services
 {

@@ -1,4 +1,6 @@
-﻿using MyWorkerService.Command;
+﻿using System;
+using Microsoft.Extensions.Logging;
+using MyWorkerService.Command;
 
 namespace MyWorkerService.Services;
 

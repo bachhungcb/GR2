@@ -1,7 +1,11 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using SIEMServer.Context;
 using SIEMServer.Interfaces;
+using SIEMServer.Model;
 using SIEMServer.Service.Channel;
 
 namespace SIEMServer.Service;
@@ -30,47 +34,136 @@ public sealed class PacketProcessingService : BackgroundService
     {
         _logger.LogInformation("Service (Kitchen) has been started");
         Console.WriteLine("[SERVICE] Has been started");
-        //Wait until Queue has something
         try
         {
-            // 1. Create an infinity loop outside
-            // This will be stopped by 'stopping Token'
             while (!stoppingToken.IsCancellationRequested)
             {
-                // 2. Wait effectively 
-                // Code will sleep here
-                // Until there IS data in queue
+                // 1. Chờ packet ĐẦU TIÊN
                 await _channel.WaitForReadAsync(stoppingToken);
-                
-                // 3. Wake up and drain queue
-                // Read everything
-                // From queue as fast as possible
-                while (_channel.TryRead(out RawPacket packet))
+
+                // 2. Tạo một lô (batch) rỗng
+                var batch = new List<RawPacket>();
+
+                // 3. "Xả" (Drain) hàng đợi nhanh nhất có thể vào lô
+                //    (Giới hạn lô 500 packet để tránh DB context quá lớn)
+                while (batch.Count < 500 && _channel.TryRead(out RawPacket packet))
+                {
+                    batch.Add(packet);
+                }
+
+                // 4. Nếu lô có dữ liệu, xử lý nó MỘT LẦN DUY NHẤT
+                if (batch.Any())
                 {
                     try
                     {
-                        //Create a new scope
-                        //For this specific packet
+                        // 5. Tạo MỘT scope duy nhất cho TOÀN BỘ lô
                         using (var scope = _scopeFactory.CreateScope())
                         {
-                            //Request a new handler
-                            var handler = scope.ServiceProvider
-                                .GetRequiredService<IPacketHandlerService>();
-                            
-                            //Begin slow job
-                            await handler.ProcessPacketAsync(
-                                packet.JsonBuffer,
-                                packet.AgentIp,
-                                null); //TODO: fix SEND command later
+                            var dbContext = scope.ServiceProvider
+                                .GetRequiredService<SiemDbContext>();
+
+                            _logger.LogInformation($"Processing a batch of {batch.Count} packets.");
+
+                            // --- BƯỚC A: Deserialize và Lấy Agent IDs ---
+                            var telemetryDataList = new List<Telemetry.Telemetry>();
+                            foreach (var packet in batch)
+                            {
+                                // Giải mã (Deserialize) packet
+                                var telemetryData = JsonSerializer
+                                    .Deserialize<Telemetry.Telemetry>(packet.JsonBuffer);
+
+                                if (telemetryData != null)
+                                {
+                                    telemetryData.AgentIp = packet.AgentIp; // Gán IP vào để dùng sau
+                                    telemetryDataList.Add(telemetryData);
+                                }
+                            }
+
+                            // Lấy TẤT CẢ Agent ID cần thiết trong lô
+                            var agentIdsInBatch = telemetryDataList
+                                .Select(t => t.AgentId).Distinct().ToList();
+
+                            // --- BƯỚC B: Truy vấn Agents MỘT LẦN DUY NHẤT ---
+                            // (Giải quyết vấn đề 330ms của FirstOrDefaultAsync)
+                            var existingAgents = await dbContext.Agents
+                                .Where(a => agentIdsInBatch.Contains(a.Id))
+                                .ToDictionaryAsync(a => a.Id, stoppingToken);
+
+                            var newAgents = new List<Agent>();
+                            var newSnapshots = new List<TelemetrySnapshots>();
+
+                            // --- BƯỚC C: Xử lý lô (batch) trong bộ nhớ ---
+                            foreach (var telemetryData in telemetryDataList)
+                            {
+                                // Tìm agent từ Dictionary (CỰC NHANH)
+                                if (!existingAgents.TryGetValue(telemetryData.AgentId, out Agent agent))
+                                {
+                                    // Nếu không có, tạo agent MỚI (chưa lưu)
+                                    agent = new Agent
+                                    {
+                                        Id = telemetryData.AgentId,
+                                        HostName = "Chưa rõ", // Sẽ được cập nhật sau
+                                        FirstSeen = DateTime.UtcNow
+                                    };
+                                    newAgents.Add(agent); // Thêm vào list agent mới
+                                    existingAgents.Add(agent.Id, agent); // Thêm vào dictionary
+                                }
+
+                                agent.LastSeen = DateTime.UtcNow;
+
+                                // Tạo (Create) Gói tin "mẹ" (Snapshot) 📦
+                                var snapshot = new TelemetrySnapshots
+                                {
+                                    Id = Guid.NewGuid(),
+                                    Agent = agent, // Gán object đã theo dõi (tracked)
+                                    Timestamp = DateTime.UtcNow,
+                                    AgentIpAddress = telemetryData.AgentIp
+                                };
+
+                                // Ánh xạ (Map) Tiến trình (Processes) 🖥️
+                                snapshot.ProcessEntries = telemetryData.Processes
+                                    .Select(p_json => new ProcessEntries
+                                    {
+                                        Pid = p_json.Pid,
+                                        Name = p_json.Name,
+                                        FilePath = p_json.FilePath ?? string.Empty,
+                                        Commandline = p_json.CommandLine ?? string.Empty
+                                    }).ToList();
+
+                                // Ánh xạ (Map) Kết nối (Connections) 📡
+                                snapshot.ConnectionEntries = telemetryData.Connections
+                                    .Select(c_json => new ConnectionEntries
+                                    {
+                                        LocalEndPointAddr = c_json.LocalEndPointAddr,
+                                        RemoteEndPointAddr = c_json.RemoteEndPointAddr,
+                                        State = c_json.State
+                                    }).ToList();
+
+                                newSnapshots.Add(snapshot);
+                            }
+
+                            // --- BƯỚC D: Lưu (Save) vào DB MỘT LẦN DUY NHẤT ---
+                            if (newAgents.Any())
+                            {
+                                // Thêm tất cả agent mới
+                                await dbContext.Agents.AddRangeAsync(newAgents, stoppingToken);
+                            }
+
+                            // Thêm tất cả snapshot mới
+                            await dbContext.Snapshot.AddRangeAsync(newSnapshots, stoppingToken);
+
+                            // Lưu tất cả thay đổi trong 1 giao dịch (transaction)
+                            await dbContext.SaveChangesAsync(stoppingToken);
+
+                            _logger.LogInformation($"[BATCH SAVED] Saved {newSnapshots.Count} snapshots.");
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error (kitchen) while processing packet");
+                        _logger.LogError(ex, "Error (kitchen) while processing BATCH");
                     }
-                } //End of 'TryRead' loop
+                } //Kết thúc if (batch.Any())
             } //Go back to loop back 'WaitForReadAsync'
-            Console.WriteLine("[SERVICE] Has ended");
         }
         catch (OperationCanceledException e)
         {

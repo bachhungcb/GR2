@@ -13,13 +13,16 @@ namespace SIEMServer.TCP
     {
         // 1. DEPENDENCIES
         private readonly PacketChannelService _channel;
+        private readonly ILogger<TCPServer> _logger;
         private readonly BlacklistService _blacklistService;
 
         public TCPServer(
             PacketChannelService channel,
-            BlacklistService blacklistService)
+            BlacklistService blacklistService,
+            ILogger<TCPServer> logger)
         {
             _channel = channel;
+            _logger = logger;
             _blacklistService = blacklistService;
         }
 
@@ -87,28 +90,41 @@ namespace SIEMServer.TCP
 
                                     //Put packet into queue
                                     await _channel.WriteAsync(rawPacket);
-                                    _ = Task.Run(async () =>
+                                    // ----- TẠO LUỒNG NÓNG (HOT PATH) ⚡️ CHO THÔNG BÁO -----
+// (Chỉ để in ra console ngay lập tức cho UX)
+                                    _ = Task.Run(() =>
                                     {
-                                        // (Chúng ta phải 'Deserialize' (Giải mã) 📖
-                                        //  lại 1 lần nữa ở đây, nhưng nó rất nhanh ⚡️)
                                         try
                                         {
+                                            // 1. Giải mã (Deserialize) gói tin
                                             var telemetryData =
                                                 JsonSerializer.Deserialize<Telemetry.Telemetry>(rawPacket.JsonBuffer);
-                                            if (telemetryData != null)
+
+                                            // 2. Kiểm tra xem có cảnh báo (Alerts) không
+                                            if (telemetryData?.Alerts != null && telemetryData.Alerts.Any())
                                             {
-                                                // Gọi (Call) logic "Phát hiện" (Detection) 🕵️‍♂️ / "Hành động" (Action) ⛔
-                                                // (Bây-giờ nó chạy (runs) trên một luồng (thread) 
-                                                //  riêng biệt 🏃‍♀️, không "chặn" (blocking) 🚫
-                                                //  "Người phục vụ" (Waiter) ⚡️)
-                                                await _blacklistService.FilterRules(telemetryData, stream, agentIp);
+                                                // 3. Nếu có, in chúng ra!
+                                                foreach (var alert in telemetryData.Alerts)
+                                                {
+                                                    Console.ForegroundColor = ConsoleColor.Red;
+                                                    Console.WriteLine($"{DateTime.Now:HH:mm:ss} " +
+                                                                      $"[!!! AGENT ALERT !!! ] " +
+                                                                      $" Agent '{telemetryData.AgentId}'" +
+                                                                      $" blocked: {alert.ProcessName} (PID: {alert.Pid})" +
+                                                                      $" [Rule: {alert.MatchedRule}]");
+                                                    Console.ResetColor();
+                                                    _logger.LogInformation($"{DateTime.Now:HH:mm:ss} " +
+                                                                           $"[!!! AGENT ALERT !!! ] " +
+                                                                           $" Agent '{telemetryData.AgentId}'" +
+                                                                           $" blocked: {alert.ProcessName} (PID: {alert.Pid})" +
+                                                                           $" [Rule: {alert.MatchedRule}]");
+                                                }
                                             }
                                         }
                                         catch (Exception ex)
                                         {
-                                            // "Bắt" (Catch) bất kỳ lỗi (errors) "Bắn và Quên" (Fire-and-Forget) 🔥 nào
-                                            Console.WriteLine(
-                                                $"[HOT-PATH ERROR] Lỗi Phát hiện (Detection) 🕵️‍♂️: {ex.Message}");
+                                            // (Không làm gì nghiêm trọng, vì đây chỉ là luồng thông báo)
+                                            Console.WriteLine($"[HOT-PATH NOTIFY ERROR]: {ex.Message}");
                                         }
                                     });
                                 }
