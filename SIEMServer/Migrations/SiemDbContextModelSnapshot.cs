@@ -43,6 +43,36 @@ namespace SIEMServer.Migrations
                     b.ToTable("Agents");
                 });
 
+            modelBuilder.Entity("SIEMServer.Model.AlertEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MatchedRule")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Pid")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProcessName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AgentId");
+
+                    b.ToTable("Alerts");
+                });
+
             modelBuilder.Entity("SIEMServer.Model.BlacklistedProcess", b =>
                 {
                     b.Property<Guid>("Id")
@@ -151,6 +181,17 @@ namespace SIEMServer.Migrations
                     b.HasIndex("AgentId");
 
                     b.ToTable("Snapshot");
+                });
+
+            modelBuilder.Entity("SIEMServer.Model.AlertEntry", b =>
+                {
+                    b.HasOne("SIEMServer.Model.Agent", "Agent")
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Agent");
                 });
 
             modelBuilder.Entity("SIEMServer.Model.ConnectionEntries", b =>

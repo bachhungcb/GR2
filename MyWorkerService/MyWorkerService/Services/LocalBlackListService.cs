@@ -116,11 +116,28 @@ public class LocalBlacklistService
                 // --- XỬ LÝ VI PHẠM (HANDLE MATCH) ---
                 if (isMatched)
                 {
-                    // ... (Code tạo Alert và gọi ExecuteCommand giữ nguyên)
-                    _logger.LogWarning(
-                        $"[LOCAL BLOCK] Found violation: {incomingProcess.Name} ({incomingProcess.Pid})");
-                    // ...
-                    break;
+                    _logger.LogWarning($"[LOCAL BLOCK] Found violation: {incomingProcess.Name} ({incomingProcess.Pid})");
+
+                    // 1. Tạo Alert
+                    alerts.Add(new Alert
+                    {
+                        ProcessName = incomingProcess.Name,
+                        Pid = incomingProcess.Pid,
+                        MatchedRule = matchedBy,
+                        Timestamp = DateTime.Now
+                    });
+
+                    // 2. [QUAN TRỌNG] GỌI LỆNH CHẶN
+                    var command = new ServerCommand
+                    {
+                        CommandType = "BLOCK_PROCESS_PID",
+                        Target = incomingProcess.Pid.ToString()
+                    };
+                    
+                    // Gọi hàm ExecuteCommand để thực hiện Kill/Taskkill
+                    commandHandler.ExecuteCommand(command);
+
+                    break; // Thoát vòng lặp rules
                 }
             }
         }

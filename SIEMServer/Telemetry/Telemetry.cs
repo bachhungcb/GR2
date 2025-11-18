@@ -11,7 +11,7 @@
     public class Telemetry
     {
         public Guid AgentId { get; set; }
-
+        public string HostName { get; set; }
 
         public struct ProcessJsonElement
         {

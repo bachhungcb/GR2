@@ -73,19 +73,19 @@ public sealed class PacketHandlerService : IPacketHandlerService
                 {
                     Id = telemetryData.AgentId,
                     HostName = "Chưa rõ", // TODO
-                    FirstSeen = DateTime.UtcNow
+                    FirstSeen = DateTime.Now
                 };
                 _dbContext.Agents.Add(agent);
             }
 
-            agent.LastSeen = DateTime.UtcNow;
+            agent.LastSeen = DateTime.Now;
 
             // Tạo (Create) Gói tin "mẹ" (Snapshot) 📦
             var snapshot = new TelemetrySnapshots
             {
                 Id = Guid.NewGuid(),
                 Agent = agent,
-                Timestamp = DateTime.UtcNow,
+                Timestamp = DateTime.Now,
                 AgentIpAddress = remoteIpAddress
             };
 

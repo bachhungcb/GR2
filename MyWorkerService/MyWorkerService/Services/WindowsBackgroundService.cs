@@ -72,7 +72,7 @@ public sealed class WindowsBackgroundService : BackgroundService
                     await _postService.PostInformation(packet);
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
             }
         }
         catch (OperationCanceledException)

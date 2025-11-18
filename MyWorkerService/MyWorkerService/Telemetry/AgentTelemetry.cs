@@ -12,6 +12,7 @@ namespace MyWorkerService.Telemetry
     public class AgentTelemetry
     {
         public Guid AgentId { get; set; } //For getting agentId
+        public string HostName { get; set; }
         public List<ProcessJsonElement> Processes { get; set; }
         public List<TCPJsonElement> Connections { get; set; }
         public List<Alert> Alerts { get; set; } // [MỚI] Thêm trường cảnh báo
@@ -25,6 +26,7 @@ namespace MyWorkerService.Telemetry
             try
             {
                 AgentId = agentId;
+                HostName = System.Net.Dns.GetHostName();
 
                 var processes = processService.GetAllProcessData();
                 Processes = processes ?? new List<ProcessJsonElement>();

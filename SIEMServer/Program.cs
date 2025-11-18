@@ -61,7 +61,8 @@ try
 
 // Xây dựng (Build) và Chạy (Run)
     var app = builder.Build();
-
+    app.UseDefaultFiles(); 
+    app.UseStaticFiles();
 // [MỚI] Ánh xạ các API controllers
     app.MapControllers();
 

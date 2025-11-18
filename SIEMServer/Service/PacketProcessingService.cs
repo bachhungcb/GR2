@@ -104,6 +104,17 @@ public sealed class PacketProcessingService : BackgroundService
                                         _logger.LogWarning(
                                             $" -> Blocked '{alert.ProcessName}' (PID: {alert.Pid}) due to rule: {alert.MatchedRule}");
                                     }
+                                    //LƯU VÀO DANH SÁCH ĐỂ INSERT DB
+                                    var alertEntries = telemetryData.Alerts.Select(a => new AlertEntry
+                                    {
+                                        Id = Guid.NewGuid(),
+                                        AgentId = telemetryData.AgentId,
+                                        ProcessName = a.ProcessName,
+                                        Pid = a.Pid,
+                                        MatchedRule = a.MatchedRule,
+                                        Timestamp = a.Timestamp
+                                    }).ToList();
+                                    await dbContext.Alerts.AddRangeAsync(alertEntries, stoppingToken);
                                 }
                                 
                                 // Tìm agent từ Dictionary (CỰC NHANH)
@@ -113,21 +124,29 @@ public sealed class PacketProcessingService : BackgroundService
                                     agent = new Agent
                                     {
                                         Id = telemetryData.AgentId,
-                                        HostName = "Chưa rõ", // Sẽ được cập nhật sau
-                                        FirstSeen = DateTime.UtcNow
+                                        HostName = telemetryData.HostName ?? "Chưa rõ", // Sẽ được cập nhật sau
+                                        FirstSeen = DateTime.Now
                                     };
                                     newAgents.Add(agent); // Thêm vào list agent mới
                                     existingAgents.Add(agent.Id, agent); // Thêm vào dictionary
                                 }
+                                else
+                                {
+                                    //Cập nhật tên nếu nó thay đổi hoặc đang là "Chưa rõ"
+                                    if (!string.IsNullOrEmpty(telemetryData.HostName) && agent.HostName != telemetryData.HostName)
+                                    {
+                                        agent.HostName = telemetryData.HostName;
+                                    }
+                                }
 
-                                agent.LastSeen = DateTime.UtcNow;
+                                agent.LastSeen = DateTime.Now;
 
                                 // Tạo (Create) Gói tin "mẹ" (Snapshot) 📦
                                 var snapshot = new TelemetrySnapshots
                                 {
                                     Id = Guid.NewGuid(),
                                     Agent = agent, // Gán object đã theo dõi (tracked)
-                                    Timestamp = DateTime.UtcNow,
+                                    Timestamp = DateTime.Now,
                                     AgentIpAddress = telemetryData.AgentIp
                                 };
 

@@ -10,7 +10,7 @@ namespace SIEMServer.Context
         public DbSet<ProcessEntries> ProcessEntries { get; set; }
         public DbSet<BlacklistedProcess> BlacklistedProcesses { get; set; }
         public DbSet<TelemetrySnapshots> Snapshot { get; set; }
-
+        public DbSet<AlertEntry> Alerts { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -26,6 +26,12 @@ namespace SIEMServer.Context
             modelBuilder.Entity<TelemetrySnapshots>()
                 .HasMany(p => p.ProcessEntries)
                 .WithOne(p => p.Snapshot);
+            
+            modelBuilder.Entity<AlertEntry>()
+                .HasOne(a => a.Agent)
+                .WithMany() // Một Agent có nhiều Alert, nhưng Agent không cần giữ List<Alert>
+                .HasForeignKey(a => a.AgentId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
