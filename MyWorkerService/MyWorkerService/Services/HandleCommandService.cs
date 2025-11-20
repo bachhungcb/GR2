@@ -99,26 +99,25 @@ public class HandleCommandService
         // 1. KIỂM TRA CACHE TRƯỚC
         // Nếu IP này đã được xử lý trong phiên chạy này rồi thì bỏ qua
         // Giúp giảm tải CPU và tránh spam log
-        if (_blockedIpCache.Contains(ipAddress))
-        {
-            return;
-        }
+        // if (_blockedIpCache.Contains(ipAddress))
+        // {
+        //     return;
+        // }
 
         string ruleName = $"EDR Block {ipAddress}";
         _logger.LogWarning($"[FIREWALL] Action needed for IP: {ipAddress}");
 
-        // 2. CHIẾN THUẬT: XÓA TRƯỚC - THÊM SAU
-        // Luôn thử xóa rule cũ (hoặc rule trùng lặp) trước. 
-        // Nếu rule chưa có thì lệnh này lỗi nhẹ, ta bỏ qua.
+        // Xóa rule cũ
         RunNetshCommand($"advfirewall firewall delete rule name=\"{ruleName}\"");
 
-        // 3. THÊM RULE MỚI (Chặn cả vào và ra)
-        bool outSuccess =
-            RunNetshCommand(
-                $"advfirewall firewall add rule name=\"{ruleName}\" dir=out action=block remoteip={ipAddress}");
-        bool inSuccess =
-            RunNetshCommand(
-                $"advfirewall firewall add rule name=\"{ruleName}\" dir=in action=block remoteip={ipAddress}");
+        // [NÂNG CẤP] Thêm tham số protocol=any profile=any để chặn triệt để
+        // Chặn Chiều đi (Outbound)
+        bool outSuccess = RunNetshCommand(
+            $"advfirewall firewall add rule name=\"{ruleName}\" dir=out action=block remoteip={ipAddress} protocol=any profile=any");
+
+        // Chặn Chiều đến (Inbound)
+        bool inSuccess = RunNetshCommand(
+            $"advfirewall firewall add rule name=\"{ruleName}\" dir=in action=block remoteip={ipAddress} protocol=any profile=any");
 
         if (outSuccess && inSuccess)
         {

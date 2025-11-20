@@ -18,6 +18,7 @@ public class BlacklistedProcess
     public string? Commandline { get; set; }
     public string? HashValue { get; set; }
     public string? RemoteIp { get; set; }
+    public string? Domain { get; set; }
 }
 
 // [MỚI] Định nghĩa gói tin Cảnh báo (Alert)
@@ -146,7 +147,14 @@ public class LocalBlacklistService
 
         return alerts;
     }
-
+    public List<string> GetBlacklistedDomains()
+    {
+        return _rules
+            .Where(r => !string.IsNullOrEmpty(r.Domain))
+            .Select(r => r.Domain!) 
+            .Distinct()
+            .ToList();
+    }
     private string? CalculateSha256(string filePath)
     {
         // Kiểm tra xem file có tồn tại không
@@ -232,4 +240,6 @@ public class LocalBlacklistService
 
         return alerts;
     }
+    
+    
 }

@@ -37,7 +37,7 @@ try
     builder.Services.AddSingleton<HandleCommandService>();
     builder.Services.AddSingleton<LocalBlacklistService>();
     builder.Services.AddHostedService<RuleSyncService>();
-    
+    builder.Services.AddHostedService<DomainBlockerService>();
 
     //Background service
     builder.Services.AddHostedService<WindowsBackgroundService>();

@@ -9,4 +9,5 @@ public class BlacklistedProcess
     public string? HashValue { get; set; }
     
     public string? RemoteIp { get; set; }
+    public string? Domain { get; set; }
 }

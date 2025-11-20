@@ -32,6 +32,7 @@ try
     });
     builder.Logging.ClearProviders();
     builder.Host.UseSerilog();
+
     #region Services
 
     builder.Services.AddControllers();
@@ -40,7 +41,14 @@ try
     builder.Services.AddDbContext<SiemDbContext>(options =>
         options.UseSqlServer(
             builder.Configuration.GetConnectionString("DefaultConnection"),
-            sqlOption => { sqlOption.CommandTimeout(30); }
+            sqlOption =>
+            {
+                sqlOption.CommandTimeout(30);
+                sqlOption.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(10),
+                    errorNumbersToAdd: null);
+            }
         )
     );
 
@@ -61,7 +69,7 @@ try
 
 // Xây dựng (Build) và Chạy (Run)
     var app = builder.Build();
-    app.UseDefaultFiles(); 
+    app.UseDefaultFiles();
     app.UseStaticFiles();
 // [MỚI] Ánh xạ các API controllers
     app.MapControllers();

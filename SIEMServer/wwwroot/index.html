@@ -6,9 +6,25 @@
     <title>SIEM/EDR Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #f8f9fa; }
-        .online-badge { background-color: #28a745; color: white; padding: 5px 10px; border-radius: 15px; font-size: 0.8em; }
-        .offline-badge { background-color: #dc3545; color: white; padding: 5px 10px; border-radius: 15px; font-size: 0.8em; }
+        body {
+            background-color: #f8f9fa;
+        }
+
+        .online-badge {
+            background-color: #28a745;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8em;
+        }
+
+        .offline-badge {
+            background-color: #dc3545;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8em;
+        }
     </style>
 </head>
 <body class="container py-4">
@@ -25,21 +41,20 @@
                 <table class="table table-hover">
                     <thead>
                     <tr>
-                        <th>Tên Máy (Hostname)</th>
+                        <th>Tên Máy</th>
                         <th>Trạng Thái</th>
                         <th>Lần Cuối Online</th>
                         <th>Số Cảnh Báo</th>
                         <th>Agent ID</th>
                     </tr>
                     </thead>
-                    <tbody id="agent-table-body">
-                    </tbody>
+                    <tbody id="agent-table-body"></tbody>
                 </table>
             </div>
         </div>
     </div>
 
-    <div class="col-md-12">
+    <div class="col-md-12 mb-4">
         <div class="card shadow-sm">
             <div class="card-header bg-danger text-white">
                 <h5 class="mb-0">🚨 Cảnh Báo Gần Đây</h5>
@@ -50,13 +65,58 @@
                     <tr>
                         <th>Thời Gian</th>
                         <th>Máy Trạm</th>
-                        <th>Tiến Trình (Process)</th>
-                        <th>PID</th>
-                        <th>Lý Do Chặn</th>
+                        <th>Đối Tượng</th>
+                        <th>Chi Tiết (PID/Rule)</th>
+                        <th>Lý Do</th>
                     </tr>
                     </thead>
-                    <tbody id="alert-table-body">
-                    </tbody>
+                    <tbody id="alert-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-12 mb-4">
+        <div class="card shadow-sm border-warning">
+            <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">🚫 Quản lý Quy tắc Chặn (Blacklist)</h5>
+                <button class="btn btn-sm btn-dark" onclick="fetchRules()">Làm mới</button>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 mb-4 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label">Tên Quy tắc <span class="text-danger">*</span></label>
+                        <input type="text" id="ruleName" class="form-control" placeholder="VD: Chặn Web X">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Loại Chặn</label>
+                        <select id="blockType" class="form-select" onchange="toggleInputs()">
+                            <option value="process">Chặn Tiến Trình (Process)</option>
+                            <option value="network">Chặn Mạng (IP Address)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4" id="processInputs">
+                        <label class="form-label">Đường dẫn chứa (Path)</label>
+                        <input type="text" id="rulePath" class="form-control" placeholder="VD: notepad">
+                    </div>
+                    <div class="col-md-4" id="networkInputs" style="display:none;">
+                        <label class="form-label">Địa chỉ IP (Remote IP)</label>
+                        <input type="text" id="ruleIp" class="form-control" placeholder="VD: 104.18.37.228">
+                    </div>
+                    <div class="col-md-2">
+                        <button onclick="addRule()" class="btn btn-success w-100">➕ Thêm</button>
+                    </div>
+                </div>
+
+                <table class="table table-bordered">
+                    <thead class="table-light">
+                    <tr>
+                        <th>Tên</th>
+                        <th>Chi Tiết Chặn</th>
+                        <th>Hành động</th>
+                    </tr>
+                    </thead>
+                    <tbody id="rules-table-body"></tbody>
                 </table>
             </div>
         </div>
@@ -66,69 +126,116 @@
 <script>
     const API_BASE = 'http://127.0.0.1:8889/api';
 
-    // Hàm lấy danh sách Agent
+    function toggleInputs() {
+        const type = document.getElementById('blockType').value;
+        if (type === 'process') {
+            document.getElementById('processInputs').style.display = 'block';
+            document.getElementById('networkInputs').style.display = 'none';
+        } else {
+            document.getElementById('processInputs').style.display = 'none';
+            document.getElementById('networkInputs').style.display = 'block';
+        }
+    }
+
     async function fetchAgents() {
         try {
             const res = await fetch(`${API_BASE}/agents`);
             const data = await res.json();
             const tbody = document.getElementById('agent-table-body');
             tbody.innerHTML = '';
-
             data.forEach(agent => {
                 const statusClass = agent.isOnline ? 'online-badge' : 'offline-badge';
-                const statusText = agent.isOnline ? 'Online' : 'Offline';
-                // Format ngày giờ cho đẹp
-                const lastSeen = new Date(agent.lastSeen).toLocaleString('vi-VN');
-
-                const row = `
-                        <tr>
-                            <td class="fw-bold">${agent.hostName}</td>
-                            <td><span class="${statusClass}">${statusText}</span></td>
-                            <td>${lastSeen}</td>
-                            <td class="text-danger fw-bold">${agent.alertCount}</td>
-                            <td class="text-muted small">${agent.id}</td>
-                        </tr>
-                    `;
+                const row = `<tr><td class="fw-bold">${agent.hostName}</td><td><span class="${statusClass}">${agent.isOnline ? 'Online' : 'Offline'}</span></td><td>${new Date(agent.lastSeen).toLocaleString('vi-VN')}</td><td class="text-danger fw-bold">${agent.alertCount}</td><td class="text-muted small">${agent.id}</td></tr>`;
                 tbody.innerHTML += row;
             });
-
             document.getElementById('last-update').innerText = 'Cập nhật: ' + new Date().toLocaleTimeString();
         } catch (err) {
-            console.error("Lỗi tải Agent:", err);
+            console.error(err);
         }
     }
 
-    // Hàm lấy danh sách Alert
     async function fetchAlerts() {
         try {
             const res = await fetch(`${API_BASE}/alerts?count=10`);
             const data = await res.json();
             const tbody = document.getElementById('alert-table-body');
             tbody.innerHTML = '';
-
             data.forEach(alert => {
-                const time = new Date(alert.timestamp).toLocaleString('vi-VN');
-                const row = `
-                        <tr>
-                            <td>${time}</td>
-                            <td class="fw-bold">${alert.agentName}</td>
-                            <td>${alert.processName}</td>
-                            <td>${alert.pid}</td>
-                            <td class="text-danger">${alert.matchedRule}</td>
-                        </tr>
-                    `;
+                const row = `<tr><td>${new Date(alert.timestamp).toLocaleString('vi-VN')}</td><td class="fw-bold">${alert.agentName}</td><td>${alert.processName}</td><td>${alert.pid}</td><td class="text-danger">${alert.matchedRule}</td></tr>`;
                 tbody.innerHTML += row;
             });
         } catch (err) {
-            console.error("Lỗi tải Alert:", err);
+            console.error(err);
         }
     }
 
-    // Chạy ngay khi mở web
+    async function fetchRules() {
+        try {
+            const res = await fetch(`${API_BASE}/blacklist/rules`);
+            const data = await res.json();
+            const tbody = document.getElementById('rules-table-body');
+            tbody.innerHTML = '';
+            data.forEach(rule => {
+                // Hiển thị thông minh: Nếu có IP thì hiện IP, nếu không thì hiện Path
+                let detail = rule.remoteIp
+                    ? `<span class="badge bg-primary">IP: ${rule.remoteIp}</span>`
+                    : `<span class="badge bg-secondary">Path: ${rule.filePath || 'N/A'}</span>`;
+
+                const row = `<tr><td>${rule.name}</td><td>${detail}</td><td><button onclick="deleteRule('${rule.id}')" class="btn btn-sm btn-outline-danger">Xóa</button></td></tr>`;
+                tbody.innerHTML += row;
+            });
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    async function addRule() {
+        const name = document.getElementById('ruleName').value;
+        const type = document.getElementById('blockType').value;
+        let filePath = null;
+        let remoteIp = null;
+
+        if (!name) return alert("Cần nhập tên quy tắc!");
+
+        if (type === 'process') {
+            filePath = document.getElementById('rulePath').value;
+            if (!filePath) return alert("Cần nhập đường dẫn process!");
+        } else {
+            remoteIp = document.getElementById('ruleIp').value;
+            if (!remoteIp) return alert("Cần nhập địa chỉ IP!");
+        }
+
+        const payload = {
+            name: name,
+            filePath: filePath,
+            remoteIp: remoteIp, // [QUAN TRỌNG] Gửi IP lên server
+            commandline: null,
+            hashValue: null
+        };
+
+        await fetch(`${API_BASE}/blacklist`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+
+        // Reset form
+        document.getElementById('ruleName').value = '';
+        document.getElementById('rulePath').value = '';
+        document.getElementById('ruleIp').value = '';
+        fetchRules();
+        alert("Đã thêm quy tắc thành công!");
+    }
+
+    async function deleteRule(id) {
+        if (!confirm("Bạn chắc chắn muốn xóa?")) return;
+        await fetch(`${API_BASE}/blacklist/${id}`, {method: 'DELETE'});
+        fetchRules();
+    }
+
     fetchAgents();
     fetchAlerts();
-
-    // Tự động cập nhật mỗi 2 giây
+    fetchRules();
     setInterval(() => {
         fetchAgents();
         fetchAlerts();
