@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SIEMServer.Context;
 
@@ -11,9 +12,11 @@ using SIEMServer.Context;
 namespace SIEMServer.Migrations
 {
     [DbContext(typeof(SiemDbContext))]
-    partial class SiemDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251120035334_AllowNullOnFilePath")]
+    partial class AllowNullOnFilePath
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

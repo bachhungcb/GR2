@@ -17,6 +17,7 @@ public class BlacklistedProcess
     public string FilePath { get; set; }
     public string? Commandline { get; set; }
     public string? HashValue { get; set; }
+    public string? RemoteIp { get; set; }
 }
 
 // [MỚI] Định nghĩa gói tin Cảnh báo (Alert)
@@ -101,7 +102,7 @@ public class LocalBlacklistService
                     // Chỉ tính hash nếu chúng ta chưa tính
                     if (calculatedHash == null)
                     {
-                        calculatedHash = CalculateSHA256(incomingProcess.FilePath);
+                        calculatedHash = CalculateSha256(incomingProcess.FilePath);
                     }
 
                     // So sánh hash (nếu file tồn tại và có thể đọc được)
@@ -116,7 +117,8 @@ public class LocalBlacklistService
                 // --- XỬ LÝ VI PHẠM (HANDLE MATCH) ---
                 if (isMatched)
                 {
-                    _logger.LogWarning($"[LOCAL BLOCK] Found violation: {incomingProcess.Name} ({incomingProcess.Pid})");
+                    _logger.LogWarning(
+                        $"[LOCAL BLOCK] Found violation: {incomingProcess.Name} ({incomingProcess.Pid})");
 
                     // 1. Tạo Alert
                     alerts.Add(new Alert
@@ -133,7 +135,7 @@ public class LocalBlacklistService
                         CommandType = "BLOCK_PROCESS_PID",
                         Target = incomingProcess.Pid.ToString()
                     };
-                    
+
                     // Gọi hàm ExecuteCommand để thực hiện Kill/Taskkill
                     commandHandler.ExecuteCommand(command);
 
@@ -145,7 +147,7 @@ public class LocalBlacklistService
         return alerts;
     }
 
-    private string? CalculateSHA256(string filePath)
+    private string? CalculateSha256(string filePath)
     {
         // Kiểm tra xem file có tồn tại không
         if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
@@ -181,5 +183,53 @@ public class LocalBlacklistService
             _logger.LogError(ex, $"Lỗi không xác định khi tính hash file: {filePath}");
             return null;
         }
+    }
+
+    public List<Alert> FilterNetwork(
+        List<GetTCPConnectionsService.TCPJsonElement>? connections,
+        HandleCommandService commandHandler)
+    {
+        var alerts = new List<Alert>();
+        if (connections == null || !_rules.Any())
+        {
+            return alerts;
+        }
+
+        foreach (var conn in connections)
+        {
+            foreach (var rule in _rules)
+            {
+                // 1. Check if Rule match with IP config 
+                if (!string.IsNullOrEmpty(rule.RemoteIp))
+                {
+                    // 2. Compare IP connections with blacklist IP
+                    if (rule.RemoteIp.Equals(conn.RemoteEndPointAddr))
+                    {
+                        _logger.LogWarning(
+                            $"[NET BLOCK] Found malicious connections to {conn.RemoteEndPointAddr}: {rule.RemoteIp}");
+
+                        // 3. Create Alerts
+                        alerts.Add(new Alert
+                        {
+                            ProcessName = "Network Connection", // Chúng ta chưa biết PID từ TCP service này
+                            Pid = 0,
+                            MatchedRule = $"Malicious IP: {rule.RemoteIp}",
+                            Timestamp = DateTime.UtcNow
+                        });
+
+                        // 4. Call command to block IP
+                        var command = new ServerCommand
+                        {
+                            CommandType = "BLOCK_IP",
+                            Target = rule.RemoteIp
+                        };
+
+                        commandHandler.ExecuteCommand(command);
+                    }
+                }
+            }
+        }
+
+        return alerts;
     }
 }

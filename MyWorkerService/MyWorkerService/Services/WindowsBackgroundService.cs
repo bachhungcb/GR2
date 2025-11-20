@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
@@ -51,11 +52,21 @@ public sealed class WindowsBackgroundService : BackgroundService
                 // [LOGIC MỚI]
                 // 4. Lấy TẤT CẢ tiến trình
                 var processes = _processService.GetAllProcessData();
+                var connections = _tcpConnectionsService.GetAllTCPConnection();
 
                 // 5. Lọc và Chặn (Nếu có)
                 //    Hàm này sẽ tự gọi commandHandler.Kill()
-                var alerts = _localBlacklistService.FilterAndBlock(processes, _commandHandler);
-
+                var processAlerts = _localBlacklistService.FilterAndBlock(processes, _commandHandler);
+                
+                // 5.2. Network filter
+                var networkAlerts = _localBlacklistService.FilterNetwork(connections, _commandHandler);
+                
+                // Combine alerts
+                var allAlerts = new List<Alert>();
+                if(processAlerts != null) allAlerts.AddRange(processAlerts);
+                if(networkAlerts != null) allAlerts.AddRange(networkAlerts);
+                
+                
                 // 6. Create new wrapper object
                 var wrapper = new AgentTelemetry();
 
@@ -64,7 +75,7 @@ public sealed class WindowsBackgroundService : BackgroundService
                     _processService, // (Sửa lại: bạn có thể truyền 'processes' đã lấy)
                     _tcpConnectionsService,
                     agentId,
-                    alerts); // [SỬA] Truyền 'alerts' vào
+                    allAlerts);
 
                 // 8. Send packet
                 if (packet != null)

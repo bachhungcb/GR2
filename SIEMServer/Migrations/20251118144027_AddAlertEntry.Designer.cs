@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SIEMServer.Context;
 
@@ -11,9 +12,11 @@ using SIEMServer.Context;
 namespace SIEMServer.Migrations
 {
     [DbContext(typeof(SiemDbContext))]
-    partial class SiemDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251118144027_AddAlertEntry")]
+    partial class AddAlertEntry
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -83,6 +86,7 @@ namespace SIEMServer.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("FilePath")
+                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("HashValue")
@@ -90,9 +94,6 @@ namespace SIEMServer.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("RemoteIp")
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
