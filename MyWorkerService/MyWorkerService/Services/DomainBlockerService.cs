@@ -16,6 +16,10 @@ public class DomainBlockerService : BackgroundService
     private readonly LocalBlacklistService _localBlacklistSerivce;
     private readonly HandleCommandService _handleCommandSerivce;
 
+    // Cấu hình thời gian (bạn có thể thay đổi tùy ý)
+    private readonly TimeSpan _longInterval = TimeSpan.FromMinutes(1); // Khi đã hoạt động ổn định
+    private readonly TimeSpan _shortInterval = TimeSpan.FromSeconds(30); // Khi đang chờ dữ liệu ban đầu
+
     public DomainBlockerService(
         ILogger<DomainBlockerService> logger,
         LocalBlacklistService localBlackListService,
@@ -32,6 +36,8 @@ public class DomainBlockerService : BackgroundService
 
         while (!cancellationToken.IsCancellationRequested)
         {
+            bool hasWorkToDo = false;
+
             try
             {
                 // 1. Lấy danh sách Domain cần chặn
@@ -39,12 +45,16 @@ public class DomainBlockerService : BackgroundService
 
                 if (domains.Any())
                 {
+                    hasWorkToDo = true;
                     _logger.LogInformation($"[DNS SCAN] Resolving IPs for {domains.Count} domains...");
-
                     foreach (var domain in domains)
                     {
                         await ResolveAndBlock(domain);
                     }
+                }
+                else
+                {
+                    _logger.LogDebug("[DNS SCAN] No domains found in blacklist yet.");
                 }
             }
             catch (Exception ex)
@@ -52,11 +62,17 @@ public class DomainBlockerService : BackgroundService
                 _logger.LogError(ex, "Error in Domain Blocker loop");
             }
 
-            // 2. Nghỉ ngơi (Scan lại sau mỗi 15 phút để cập nhật IP mới nếu có)
-            await Task.Delay(TimeSpan.FromMinutes(15), cancellationToken);
+            if (hasWorkToDo)
+            {
+                await Task.Delay(_shortInterval, cancellationToken);
+            }
+            else
+            {
+                await Task.Delay(_longInterval, cancellationToken);   
+            }
         }
     }
-    
+
     private async Task ResolveAndBlock(string domain)
     {
         try
@@ -70,7 +86,7 @@ public class DomainBlockerService : BackgroundService
                 // Bỏ qua IPv6 nếu bạn chưa muốn xử lý (hoặc chặn cả hai)
                 // Ở đây chặn hết
                 string ipString = ip.ToString();
-                    
+
                 _logger.LogInformation($"[DNS DETECT] Domain '{domain}' resolved to IP: {ipString}");
 
                 // Gọi HandleCommandService để thêm Firewall Rule

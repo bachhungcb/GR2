@@ -99,10 +99,10 @@ public class HandleCommandService
         // 1. KIỂM TRA CACHE TRƯỚC
         // Nếu IP này đã được xử lý trong phiên chạy này rồi thì bỏ qua
         // Giúp giảm tải CPU và tránh spam log
-        // if (_blockedIpCache.Contains(ipAddress))
-        // {
-        //     return;
-        // }
+        if (_blockedIpCache.Contains(ipAddress))
+        {
+            return;
+        }
 
         string ruleName = $"EDR Block {ipAddress}";
         _logger.LogWarning($"[FIREWALL] Action needed for IP: {ipAddress}");

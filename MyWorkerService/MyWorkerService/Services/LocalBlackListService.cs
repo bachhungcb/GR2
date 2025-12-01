@@ -147,14 +147,18 @@ public class LocalBlacklistService
 
         return alerts;
     }
+
     public List<string> GetBlacklistedDomains()
     {
+        Console.WriteLine($"Rules " +
+                          $"{_rules}");
         return _rules
             .Where(r => !string.IsNullOrEmpty(r.Domain))
-            .Select(r => r.Domain!) 
+            .Select(r => r.Domain!)
             .Distinct()
             .ToList();
     }
+
     private string? CalculateSha256(string filePath)
     {
         // Kiểm tra xem file có tồn tại không
@@ -198,48 +202,75 @@ public class LocalBlacklistService
         HandleCommandService commandHandler)
     {
         var alerts = new List<Alert>();
+
+        // Nếu không có kết nối nào hoặc rule chưa load, tạm thời return để tránh chặn nhầm khi khởi động
         if (connections == null || !_rules.Any())
         {
             return alerts;
         }
 
+        // 1. CHUẨN BỊ DANH SÁCH TRẮNG (WHITELIST)
+        // Lấy danh sách các IP được phép từ database (được sync về _rules)
+        // Giả sử field 'RemoteIp' trong bảng BlacklistedProcess giờ đóng vai trò là "AllowedIp"
+        var allowedIps = _rules
+            .Where(r => !string.IsNullOrEmpty(r.RemoteIp))
+            .Select(r => r.RemoteIp)
+            .ToHashSet(); // Dùng HashSet để tra cứu cực nhanh O(1)
+
+        // 2. [QUAN TRỌNG] DANH SÁCH BẤT KHẢ XÂM PHẠM (CRITICAL INFRASTRUCTURE)
+        // Đây là các IP bắt buộc phải cho phép để hệ thống hoạt động
+        var systemSafeIps = new HashSet<string>
+        {
+            "127.0.0.1", // Localhost
+            "::1", // IPv6 Localhost
+            "0.0.0.0", // Listening ports
+            "127.0.0.1:8889", // SIEM Server API (Lưu ý: Logic dưới đang so sánh IP, không port)
+            "192.168.1.1", // Gateway/Router (Nên cấu hình động)
+            "8.8.8.8", // DNS Google (Ví dụ)
+            // QUAN TRỌNG: Hãy hardcode IP của SIEM Server của bạn vào đây nếu nó cố định
+            // Ví dụ: "10.0.0.100" 
+        };
+
         foreach (var conn in connections)
         {
-            foreach (var rule in _rules)
+            // Bỏ qua các kết nối nội bộ hoặc đang lắng nghe (Listen)
+            if (conn.RemoteEndPointAddr.StartsWith("127.0.0.1") ||
+                conn.RemoteEndPointAddr.Equals("0.0.0.0") ||
+                conn.RemoteEndPointAddr.Equals("::") ||
+                conn.State == "Listen")
             {
-                // 1. Check if Rule match with IP config 
-                if (!string.IsNullOrEmpty(rule.RemoteIp))
+                continue;
+            }
+
+            // 3. LOGIC WHITELIST: Nếu IP KHÔNG nằm trong danh sách cho phép
+            bool isAllowed = allowedIps.Contains(conn.RemoteEndPointAddr);
+            bool isSystemSafe = systemSafeIps.Contains(conn.RemoteEndPointAddr);
+
+            if (!isAllowed && !isSystemSafe)
+            {
+                // --- XỬ LÝ VI PHẠM (UNKNOWN TRAFFIC) ---
+                _logger.LogWarning(
+                    $"[NET WHITELIST BLOCK] Unknown connection detected: {conn.RemoteEndPointAddr}");
+
+                alerts.Add(new Alert
                 {
-                    // 2. Compare IP connections with blacklist IP
-                    if (rule.RemoteIp.Equals(conn.RemoteEndPointAddr))
-                    {
-                        _logger.LogWarning(
-                            $"[NET BLOCK] Found malicious connections to {conn.RemoteEndPointAddr}: {rule.RemoteIp}");
+                    ProcessName = "Unauthorized Network Connection",
+                    Pid = 0,
+                    MatchedRule = $"Not in Whitelist. Blocked IP: {conn.RemoteEndPointAddr}",
+                    Timestamp = DateTime.UtcNow
+                });
 
-                        // 3. Create Alerts
-                        alerts.Add(new Alert
-                        {
-                            ProcessName = "Network Connection", // Chúng ta chưa biết PID từ TCP service này
-                            Pid = 0,
-                            MatchedRule = $"Malicious IP: {rule.RemoteIp}",
-                            Timestamp = DateTime.UtcNow
-                        });
+                // Gọi lệnh chặn IP lạ
+                var command = new ServerCommand
+                {
+                    CommandType = "BLOCK_IP",
+                    Target = conn.RemoteEndPointAddr
+                };
 
-                        // 4. Call command to block IP
-                        var command = new ServerCommand
-                        {
-                            CommandType = "BLOCK_IP",
-                            Target = rule.RemoteIp
-                        };
-
-                        commandHandler.ExecuteCommand(command);
-                    }
-                }
+                commandHandler.ExecuteCommand(command);
             }
         }
 
         return alerts;
     }
-    
-    
 }
